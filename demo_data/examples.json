@@ -1,55 +1,91 @@
 [
   {
-    "name": "Apple Q4 2024 Earnings",
+    "name": "🍎 Apple Q4 2024 Earnings",
     "query": "What were Apple's Q4 2024 earnings per share?",
     "chunks": [
       {
-        "text": "Apple reported Q4 2024 EPS of $1.64, beating analyst estimates of $1.60. Revenue grew 6% YoY to $94.9B driven by iPhone 16 demand and continued Services momentum.",
+        "text": "Apple reported Q4 2024 EPS of $1.64, beating analyst estimates of $1.60. Revenue grew 6% YoY to $94.9B driven by iPhone 16 demand and continued Services momentum. iPhone revenue specifically came in at $46.2B, above consensus.",
         "date": "2024-11-01"
       },
       {
-        "text": "Apple's supply chain partners in Vietnam expanded capacity by 15% in early 2023 to reduce China dependency. The shift is expected to lower production costs by 8% over three years.",
+        "text": "Apple's supply chain partners in Vietnam expanded capacity by 15% in early 2023 to reduce China dependency. The shift is expected to lower production costs by 8% over three years, impacting gross margin outlook.",
         "date": "2023-02-14"
       },
       {
-        "text": "Tim Cook stated in the Q4 2024 earnings call that Services revenue hit an all-time high of $24.97B, with Apple Intelligence driving increased App Store engagement.",
+        "text": "Tim Cook stated in the Q4 2024 earnings call that Services revenue hit an all-time high of $24.97B, with Apple Intelligence driving increased App Store engagement. However, no EPS figures were mentioned in this excerpt.",
         "date": "2024-10-31"
       }
     ]
   },
   {
-    "name": "Fed Interest Rate Policy",
+    "name": "🏦 Federal Reserve Rate Policy",
     "query": "What is the current Federal Reserve interest rate policy?",
     "chunks": [
       {
-        "text": "The Fed held rates at 5.25-5.5% at its September 2023 meeting, signaling potential cuts in 2024 if inflation data continues to moderate toward the 2% target.",
+        "text": "The Fed held rates at 5.25-5.5% at its September 2023 meeting, signaling potential cuts in 2024 if inflation data continues to moderate toward the 2% target. Markets priced in 75bps of cuts for 2024.",
         "date": "2023-09-20"
       },
       {
-        "text": "Federal Reserve minutes from December 2024 indicate consensus around gradual rate cuts through 2025, with the dot plot median projecting 3.75-4.0% by year-end 2025.",
+        "text": "Federal Reserve minutes from December 2024 indicate consensus around gradual rate cuts through 2025, with the dot plot median projecting 3.75-4.0% by year-end 2025. One dissenting vote favored holding.",
         "date": "2024-12-18"
       },
       {
-        "text": "Fed Chair Powell's 2022 Jackson Hole speech signaled aggressive rate hikes to combat 9.1% CPI inflation, marking the beginning of the fastest tightening cycle since the 1980s.",
+        "text": "Fed Chair Powell's 2022 Jackson Hole speech signaled aggressive rate hikes to combat 9.1% CPI inflation, marking the beginning of the fastest tightening cycle since the 1980s, with 525bps of hikes to follow.",
         "date": "2022-08-26"
       }
     ]
   },
   {
-    "name": "NVIDIA AI Revenue Growth",
-    "query": "How is NVIDIA's data center revenue trending?",
+    "name": "⚡ NVIDIA Data Center Revenue",
+    "query": "How is NVIDIA's data center revenue trending in 2024?",
     "chunks": [
       {
-        "text": "NVIDIA reported Q3 FY2025 data center revenue of $14.5B, up 279% YoY, driven by H100/H200 GPU demand from hyperscalers and enterprise AI adoption.",
+        "text": "NVIDIA reported Q3 FY2025 data center revenue of $30.8B, up 112% YoY, driven by H200 and Blackwell GPU demand from hyperscalers including Microsoft, Google, Meta, and Amazon. Gross margins hit 74.6%.",
         "date": "2024-11-20"
       },
       {
-        "text": "NVIDIA announced the Blackwell B200 GPU architecture in March 2024, promising 4x the training performance of H100 at similar power consumption.",
+        "text": "NVIDIA announced the Blackwell B200 GPU architecture in March 2024, promising 4x the training performance of H100 at similar power consumption. Initial production delays pushed major shipments to late 2024.",
         "date": "2024-03-18"
       },
       {
-        "text": "NVIDIA's gaming segment revenue declined 2% in FY2023 as crypto mining demand evaporated and consumers delayed GPU upgrades.",
-        "date": "2023-02-22"
+        "text": "NVIDIA's data center segment first surpassed gaming revenue in Q1 FY2024, with $4.28B vs $2.24B. The company flagged supply constraints limiting upside for the remainder of fiscal 2024.",
+        "date": "2023-05-24"
+      }
+    ]
+  },
+  {
+    "name": "🛢️ Oil Price Outlook",
+    "query": "What is the current outlook for crude oil prices?",
+    "chunks": [
+      {
+        "text": "Brent crude fell below $75/bbl in early April 2025 as OPEC+ announced unexpected production increases of 411,000 bpd for May, reversing prior cuts. Analysts revised 2025 price targets down to $70-78/bbl.",
+        "date": "2025-04-03"
+      },
+      {
+        "text": "OPEC+ agreed in June 2023 to extend production cuts of 1.66 million bpd through 2024, pushing Brent briefly above $95/bbl. Saudi Arabia led the effort citing market stabilization goals.",
+        "date": "2023-06-04"
+      },
+      {
+        "text": "The IEA's 2022 World Energy Outlook projected oil demand peaking before 2030 under current policies as EV adoption accelerates. However, near-term demand from Asia remained robust above 100 mbpd.",
+        "date": "2022-10-27"
+      }
+    ]
+  },
+  {
+    "name": "💳 JPMorgan Credit Quality",
+    "query": "How is JPMorgan's credit quality holding up in 2024?",
+    "chunks": [
+      {
+        "text": "JPMorgan Q3 2024 net charge-off rate rose to 1.51%, up from 1.17% a year ago, driven by credit card losses. CEO Jamie Dimon warned of 'significant geopolitical and economic risks' ahead, citing office real estate exposure.",
+        "date": "2024-10-11"
+      },
+      {
+        "text": "JPMorgan raised its net charge-off guidance for 2024 to approximately $9B from $9B previously. Consumer credit stress is concentrated in sub-prime card balances, with 30+ day delinquencies at 2.3%.",
+        "date": "2024-07-12"
+      },
+      {
+        "text": "During the 2020 COVID crisis, JPMorgan set aside $15B in loan loss reserves, the largest provision in company history. The reserves were subsequently released in 2021 as losses failed to materialize.",
+        "date": "2020-04-14"
       }
     ]
   }
