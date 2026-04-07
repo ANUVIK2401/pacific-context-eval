@@ -8,10 +8,15 @@ that could cause LLM hallucinations in financial analysis.
 """
 
 import json
+import os
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file for local development
+load_dotenv()
 
 from evaluator.freshness import freshness_score, days_old
 from evaluator.relevance import score_relevance
@@ -327,16 +332,24 @@ def load_demo_scenario():
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
-    # API Key
+    # API Key — check env vars, Streamlit secrets, or manual input
+    env_api_key = os.getenv("OPENAI_API_KEY", "")
+    if not env_api_key:
+        try:
+            env_api_key = st.secrets.get("OPENAI_API_KEY", "")
+        except Exception:
+            pass
+    
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     api_key = st.text_input(
         "OpenAI API Key",
+        value=env_api_key,
         type="password",
         placeholder="sk-...",
-        help="Required for GPT-4o relevance scoring. Leave empty for demo mode (keyword matching)."
+        help="Auto-loaded from .env or Streamlit secrets. Override here if needed."
     )
     
-    if api_key:
+    if api_key and api_key != "sk-...":
         st.success("🔑 API key set — GPT-4o mode")
         use_gpt = True
     else:
