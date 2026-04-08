@@ -31,7 +31,7 @@ USE_GPT = bool(_api_key and _api_key.startswith("sk-"))
 st.set_page_config(
     page_title="Context Freshness Evaluator · Pacific",
     page_icon="⚡", layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ══════════════════════════════════════════════════════════════
@@ -45,7 +45,7 @@ html, body, .stApp { font-family:'Inter',sans-serif; background:#07070d; color:#
 
 /* ── Hide Streamlit chrome ── */
 #MainMenu,footer,header,[data-testid="stToolbar"] { visibility:hidden; }
-[data-testid="collapsedControl"] { display:none; }
+/* Sidebar collapse control: visible so users can open/close the param panel */
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:transparent}
@@ -541,27 +541,56 @@ with tab_eval:
         if USE_GPT:
             from openai import OpenAI
             client = OpenAI(api_key=_api_key)
-    
+
         scored = []
         prog = st.progress(0, text="Initialising…")
+        has_gpt_error = False
+
         for idx, chunk in enumerate(chunks_input):
             fsc = freshness_score(chunk["chunk_date_obj"], decay_lambda)
             age = days_old(chunk["chunk_date_obj"])
-            rel = (score_relevance(query, chunk["text"], client,
-                                   model=GPT_MODEL, max_tokens=MAX_TOKENS_JUDGE)
-                   if client else simulate_relevance(query, chunk["text"]))
+
+            # ── Relevance scoring with infra failure separation ──
+            scoring_unavailable = False
+            if client:
+                try:
+                    rel = score_relevance(query, chunk["text"], client,
+                                         model=GPT_MODEL, max_tokens=MAX_TOKENS_JUDGE)
+                except Exception as gpt_err:
+                    # Infra failure ≠ model judgment — log separately
+                    rel = {"score": None, "reason": f"⚠️ Scoring unavailable: {str(gpt_err)[:120]}"}
+                    scoring_unavailable = True
+                    has_gpt_error = True
+            else:
+                rel = simulate_relevance(query, chunk["text"])
+
             scored.append({
                 "text": chunk["text"], "date": chunk["date"], "days_old": age,
-                "freshness_score": fsc, "relevance_score": rel["score"],
-                "relevance_reason": rel["reason"], "original_index": chunk["index"]+1,
+                "freshness_score": fsc,
+                "relevance_score": rel["score"],          # None if unavailable
+                "relevance_reason": rel["reason"],
+                "original_index": chunk["index"]+1,
+                "scoring_unavailable": scoring_unavailable,
             })
             prog.progress((idx+1)/len(chunks_input), text=f"Scored chunk {idx+1}/{len(chunks_input)}")
-    
+
+        # Exclude unavailable chunks from composite ranking (use freshness only)
+        for c in scored:
+            if c["scoring_unavailable"]:
+                c["relevance_score"] = 0.0   # neutral — won’t influence action label
+
         ranked = rerank_chunks(scored, rel_weight, fresh_weight)
         stale  = get_stale_chunks(ranked)
+
+        if has_gpt_error:
+            st.warning("⚠️ GPT-4o scoring failed for one or more chunks (infra error, not model judgment). "
+                       "Those chunks show relevance=0 and are excluded from action recommendations. "
+                       "Freshness scores are unaffected.")
+
         st.session_state.update({
             "results": ranked, "stale_count": len(stale), "evaluated": True,
-            "eval_mode": "GPT-4o" if client else "Keyword Match"
+            "eval_mode": "GPT-4o" if client else "Keyword Match",
+            "has_gpt_error": has_gpt_error,
         })
         prog.empty()
     
@@ -641,7 +670,13 @@ with tab_eval:
             rc = chunk["relevance_score"]; fc = chunk["freshness_score"]
             rc_clr = "#10b981" if rc>=0.7 else "#f59e0b" if rc>=0.3 else "#ef4444"
             fc_clr = "#10b981" if fc>=0.7 else "#f59e0b" if fc>=0.3 else "#ef4444"
-            action = "✅ Use" if comp>=0.7 else "⚠️ Review" if comp>=0.4 else "❌ Replace"
+            unavailable = chunk.get("scoring_unavailable", False)
+            # Exclude from action when relevance scoring failed (infra error ≠ model judgment)
+            action = ("⚠️ Scoring Unavailable" if unavailable
+                      else "✅ Use" if comp>=0.7
+                      else "⚠️ Review" if comp>=0.4
+                      else "❌ Replace")
+
     
             html = (
                 f'<div class="rcard {cc} anim">'
@@ -759,10 +794,11 @@ with tab_bench:
     )
     st.markdown(
         '<p style="font-size:0.85rem;color:rgba(200,200,224,0.5);line-height:1.7;max-width:700px;margin-bottom:1.5rem;">'
-        'Pre-computed on 8 controlled examples using deterministic keyword relevance (no API key required). '
+        'Pre-computed on 8 curated financial scenarios with fixed relevance labels '
+        '(no API key required — relevance labels are manually assigned, not live-scored). '
         'Each case is designed to demonstrate that <strong style="color:#e8e8f2;">a highly-relevant but stale chunk '
-        'is correctly demoted</strong> below a fresh chunk of equal or slightly lower relevance — the '
-        'core correctness property of the evaluator.</p>',
+        'is correctly demoted</strong> below a fresher chunk of equal or slightly lower relevance — the '
+        'core correctness property of the reranker.</p>',
         unsafe_allow_html=True
     )
 

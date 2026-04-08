@@ -1,55 +1,41 @@
 # ⚡ Context Freshness Evaluator
 
-**Score and rerank financial context chunks by relevance and freshness.**
+**Score and rerank financial context chunks by relevance and time-decay freshness — before stale data reaches your LLM.**
 
-Built for [Pacific](https://pacific.app) — an Enterprise Context Management System for finance. Financial context goes stale fast. Serving an outdated 10-K filing in an agent's context window is worse than no context at all. This tool quantifies that problem.
+Built for [Pacific](https://pacific.app) · April 8, 2026 · [Anuvik Thota](https://github.com/ANUVIK2401)
+
+---
+
+## The Problem
+
+Standard RAG pipelines retrieve context by semantic similarity. They do not account for time.
+
+A query like *"What is the current Fed interest rate?"* may retrieve a 2022 Federal Reserve speech — highly relevant by cosine similarity, but actively dangerous as financial context. The model will answer confidently based on outdated data.
+
+This evaluator adds a **temporal gate** before context reaches the LLM.
 
 ---
 
 ## What It Does
 
-Given a financial query and N context chunks (with timestamps), the evaluator:
-
-1. **Freshness Scoring** — Exponential decay: `e^(-λ·days)`. Zero latency, pure math.
-2. **Relevance Scoring** — GPT-4o judges how relevant each chunk is to the query. Returns a score + reasoning.
-3. **Composite Reranking** — Weighted blend of both signals. Tunable weights in the UI.
-4. **Stale Chunk Detection** — Flags chunks below a freshness threshold as potentially dangerous.
+Given a financial query and N context chunks (with timestamps):
 
 ```
-Query + Chunks
-     │
-     ├──► Freshness Scorer    (pure math, zero latency)
-     │         └── e^(-λ · days_old)
-     │
-     ├──► Relevance Judge     (GPT-4o, ~300ms per chunk)
-     │         └── Structured JSON output
-     │
-     └──► Reranker            (weighted composite sort)
-               └── Final ranked list with stale warnings
+User Query + N Context Chunks
+        │
+        ├──► Freshness Scorer     Zero latency, pure math
+        │         e^(−λ × days_old)
+        │
+        ├──► Relevance Judge      GPT-4o · structured JSON output
+        │         score ∈ [0,1] + natural language reason
+        │
+        └──► Composite Reranker   Weighted blend, configurable
+                  score = (rel × w) + (fresh × (1−w))
+                  → Ranked list + per-chunk action: Use / Review / Replace
 ```
 
----
-
-## Run Locally
-
-```bash
-# Clone
-git clone https://github.com/ANUVIK2401/pacific-context-eval.git
-cd pacific-context-eval
-
-# Install
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# (Optional) Set API key for GPT-4o relevance scoring
-cp .env.example .env
-# Edit .env with your OPENAI_API_KEY
-
-# Run
-streamlit run app.py
-```
-
-> **No API key?** The app works in **demo mode** using keyword-matching for relevance. GPT-4o mode activates when you enter an API key in the sidebar.
+**Stale chunk detection** flags any chunk below a freshness threshold as a hallucination risk.  
+**GPT infra failures** are handled separately from model judgment — if the scoring API is unavailable, that chunk shows "Scoring Unavailable" and is excluded from action recommendations. Freshness scores are unaffected.
 
 ---
 
@@ -59,34 +45,81 @@ streamlit run app.py
 
 ---
 
+## Run Locally
+
+```bash
+git clone https://github.com/ANUVIK2401/pacific-context-eval.git
+cd pacific-context-eval
+
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Set API key for GPT-4o relevance scoring
+cp .env.example .env
+# Edit .env: OPENAI_API_KEY=sk-...
+
+streamlit run app.py
+```
+
+> **No API key?** The app works in **Demo Mode** using keyword-overlap relevance (no cost, no API). The sidebar shows your active mode. For Streamlit Cloud deployment, set the key in **Settings → Secrets**.
+
+### Run Tests
+
+```bash
+pytest tests/ -v
+```
+
+```
+tests/test_evaluator.py::TestFreshnessScore::test_today_is_perfect     PASSED
+tests/test_evaluator.py::TestFreshnessScore::test_decay_is_monotonic    PASSED
+...
+17 passed in 0.04s
+```
+
+---
+
+## API Key Setup
+
+The application **never exposes the API key in the UI**. Set it one of two ways:
+
+| Environment | How to set |
+|---|---|
+| Local dev | `OPENAI_API_KEY=sk-...` in `.env` file |
+| Streamlit Cloud | Settings → Secrets: `OPENAI_API_KEY = "sk-..."` |
+
+---
+
 ## Configuration
 
-All parameters are tunable via the sidebar UI or in `config.py`:
+All parameters are tunable via the sidebar or in `config.py`:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `DECAY_LAMBDA` | 0.03 | Higher = faster staleness penalty. 0.03 ≈ 50% at 23 days. |
-| `RELEVANCE_WEIGHT` | 0.6 | How much query relevance matters in final ranking. |
-| `FRESHNESS_WEIGHT` | 0.4 | How much recency matters. Auto-balanced with relevance. |
-| `GPT_MODEL` | gpt-4o | Model for relevance scoring. |
-| `MAX_TOKENS_JUDGE` | 200 | Response budget per chunk (keep low for speed). |
+| `DECAY_LAMBDA` | 0.03 | Freshness decay speed. λ=0.03 → ~50% at 23 days. |
+| `RELEVANCE_WEIGHT` | 0.6 | Relevance contribution to composite score. |
+| `FRESHNESS_WEIGHT` | 0.4 | Freshness contribution. Auto-balanced: `1 - rel_weight`. |
+| `GPT_MODEL` | gpt-4o | Model used for relevance judging. |
+| `MAX_TOKENS_JUDGE` | 200 | Per-chunk token budget (keep low for latency). |
 
-### Lambda Tuning Guide for Finance
+### Lambda Tuning Guide
 
 | Data Type | Recommended λ | Half-life |
 |---|---|---|
 | Price / earnings data | 0.05 – 0.10 | 7–14 days |
-| Macro policy / rates | 0.02 – 0.04 | 17–35 days |
+| Macro / rates / policy | 0.02 – 0.04 | 17–35 days |
 | Regulatory / structural | 0.01 – 0.02 | 35–70 days |
 
 ---
 
-## Tech Stack
+## Benchmark
 
-- **Streamlit** — UI framework
-- **OpenAI GPT-4o** — Relevance judge (structured JSON output)
-- **Python** — Pure math freshness scoring
-- **Pandas** — Data presentation
+The **📊 Benchmark** tab in the app runs 8 curated financial scenarios with fixed relevance labels (no API key required — labels are manually assigned, not live-scored). Each scenario demonstrates the key correctness property:
+
+> *A highly-relevant but stale chunk is correctly demoted below a fresher chunk of comparable relevance.*
+
+**8 scenarios · 24 chunks · 100% correct rankings** (verified at λ=0.03, rel_weight=0.6)
+
+Scenarios include: Fed rate (2022 vs 2024), Apple EPS, NVIDIA revenue, oil price, JPMorgan credit quality, US CPI, S&P 500 outlook, Treasury yields.
 
 ---
 
@@ -94,41 +127,38 @@ All parameters are tunable via the sidebar UI or in `config.py`:
 
 ```
 pacific-context-eval/
-├── app.py                  # Streamlit entrypoint
+├── app.py                  # Streamlit entry point
 ├── evaluator/
-│   ├── __init__.py
 │   ├── freshness.py        # Exponential decay scoring
-│   ├── relevance.py        # GPT-4o judge scoring
-│   └── reranker.py         # Composite reranking
+│   ├── relevance.py        # GPT-4o relevance judge
+│   └── reranker.py         # Composite scoring + stale detection
+├── tests/
+│   └── test_evaluator.py   # 17 pytest tests (all passing)
 ├── config.py               # Tunable parameters
 ├── prompts/
-│   └── relevance_judge.txt # System prompt for GPT-4o
+│   └── relevance_judge.txt # GPT-4o system prompt
 ├── demo_data/
-│   └── examples.json       # Pre-built demo scenarios
+│   └── examples.json       # 5 pre-built financial demo scenarios
+├── ONE_PAGE_LETTER.md      # Submission letter
 ├── requirements.txt
-├── .env.example
-├── .streamlit/
-│   └── config.toml         # Dark theme config
-└── README.md
+└── .env.example
 ```
 
 ---
 
 ## Why This Matters for Pacific
 
-Pacific builds context management infrastructure for finance. This evaluator addresses a core challenge:
+- **Context has an expiration date.** A Fed rate decision from 2022 is not just unhelpful for a 2025 query — it is actively wrong.
+- **Relevance alone is insufficient.** Production RAG systems need both axes: *is this relevant?* and *is this still true?*
+- **Pre-LLM filtering reduces cost and latency** — filtering stale chunks before the prompt reduces token count and improves TTFT.
 
-- **Context has an expiration date.** A Fed rate decision from 2022 is dangerous context for a 2025 query.
-- **Relevance alone isn't enough.** A perfectly relevant but stale chunk can cause hallucinations.
-- **Two-signal reranking** (relevance × freshness) is what production context APIs need.
-
-This could extend to:
-- Batch evaluation pipelines for automated context quality monitoring
-- Permissions-aware scoring (access tier × freshness × relevance)
-- TTFT optimization by pre-filtering stale chunks before LLM inference
+**Immediate extension paths:**
+1. **Batch eval pipeline** — score an entire retrieval corpus against canonical queries; surface systematic staleness; trigger re-ingestion alerts
+2. **Permissions-aware reranking** — add access control as a third axis: `score = (rel × w₁) + (fresh × w₂) + (access × w₃)`
+3. **Pre-LLM context budgeting** — use the evaluator as a filter to fit the highest-signal chunks into a fixed token budget before LLM inference
 
 ---
 
 ## Author
 
-**Anuvik Thota** — [GitHub](https://github.com/ANUVIK2401)
+**Anuvik Thota** · [GitHub](https://github.com/ANUVIK2401) · [pacific-context-eval](https://github.com/ANUVIK2401/pacific-context-eval)
