@@ -4,17 +4,22 @@ Tests for the Context Freshness Evaluator core modules.
 Run with:  pytest tests/ -v
 
 Covers:
-  - freshness_score:       exponential decay correctness
-  - rerank_chunks:         composite ordering + rank assignment
-  - get_stale_chunks:      staleness threshold filtering
-  - GPT failure handling:  scoring_unavailable flag propagation
-  - action consistency:    result card, summary table, JSON export agree
-  - benchmark correctness: 8-scenario benchmark all ranks correct
+  - freshness_score:           exponential decay correctness
+  - rerank_chunks:             composite ordering + rank assignment
+  - get_stale_chunks:          staleness threshold filtering
+  - GPT failure handling:      scoring_unavailable flag propagation
+  - action consistency:        result card, summary table, JSON export agree
+  - benchmark correctness:     8-scenario benchmark all ranks correct
+  - score_relevance (real):    infra exceptions propagate; model failures caught
 """
 
+import json
 import math
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+from openai import APIConnectionError, AuthenticationError, RateLimitError
 
 from evaluator.freshness import freshness_score, days_old
 from evaluator.reranker import rerank_chunks, get_stale_chunks
@@ -396,3 +401,87 @@ class TestBenchmarkCorrectness:
                         f"[{name}] Position {i+1}: expected {spec[1]}d, got {actual['days_old']}d"
                     )
         assert not errors, "Benchmark accuracy below 100%:\n" + "\n".join(errors)
+
+
+# ══════════════════════════════════════════════════════════════
+#  score_relevance() real integration tests (mocked OpenAI client)
+# ══════════════════════════════════════════════════════════════
+
+class TestScoreRelevanceIntegration:
+    """
+    Tests the ACTUAL score_relevance() function via a mocked OpenAI client.
+
+    These prove that the exception model in evaluator/relevance.py works as
+    documented: infra failures RAISE (so app.py can set scoring_unavailable=True),
+    while model output failures are caught gracefully.
+    """
+
+    def _client_raises(self, exc):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = exc
+        return client
+
+    def _client_returns(self, json_str):
+        client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.choices[0].message.content = json_str
+        client.chat.completions.create.return_value = mock_resp
+        return client
+
+    def test_connection_error_propagates(self):
+        """Network failure must raise — not return score=0.0 silently."""
+        from evaluator.relevance import score_relevance
+        err = APIConnectionError.__new__(APIConnectionError)
+        with pytest.raises(APIConnectionError):
+            score_relevance("What is the Fed rate?", "Some chunk.", self._client_raises(err))
+
+    def test_auth_error_propagates(self):
+        """Bad API key must raise, not silently return 0.0."""
+        from evaluator.relevance import score_relevance
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        err = AuthenticationError("Invalid API key", response=mock_resp, body={})
+        with pytest.raises(AuthenticationError):
+            score_relevance("What is the Fed rate?", "Some chunk.", self._client_raises(err))
+
+    def test_rate_limit_error_propagates(self):
+        """Quota exhausted must raise."""
+        from evaluator.relevance import score_relevance
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        err = RateLimitError("Rate limit exceeded", response=mock_resp, body={})
+        with pytest.raises(RateLimitError):
+            score_relevance("What is the Fed rate?", "Some chunk.", self._client_raises(err))
+
+    def test_valid_response_parses_correctly(self):
+        """A valid GPT JSON response returns correct score and reason."""
+        from evaluator.relevance import score_relevance
+        payload = json.dumps({"score": 0.85, "reason": "Directly addresses the query."})
+        result = score_relevance("What is the Fed rate?", "Fed raised rates.", self._client_returns(payload))
+        assert result["score"] == pytest.approx(0.85, abs=0.001)
+        assert "Directly addresses" in result["reason"]
+
+    def test_malformed_json_caught_gracefully(self):
+        """
+        Model returning bad JSON (valid HTTP, bad content) is caught internally.
+        This is a model failure, NOT infra — must not raise.
+        """
+        from evaluator.relevance import score_relevance
+        result = score_relevance("What is the Fed rate?", "Fed raised rates.", self._client_returns("not json"))
+        assert result["score"] == 0.0
+        assert result["reason"]  # Some reason string must be present
+
+    def test_score_clamped_to_0_1(self):
+        """Out-of-range scores from the model must be clamped to [0, 1]."""
+        from evaluator.relevance import score_relevance
+        payload = json.dumps({"score": 1.9, "reason": "Very relevant."})
+        result = score_relevance("What is the Fed rate?", "Fed raised rates.", self._client_returns(payload))
+        assert 0.0 <= result["score"] <= 1.0
+
+    def test_empty_chunk_skips_api_call(self):
+        """Empty chunk text must return score=0.0 without calling the API."""
+        from evaluator.relevance import score_relevance
+        client = MagicMock()
+        result = score_relevance("What is the Fed rate?", "   ", client)
+        assert result["score"] == 0.0
+        client.chat.completions.create.assert_not_called()
