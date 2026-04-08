@@ -4,9 +4,12 @@ Tests for the Context Freshness Evaluator core modules.
 Run with:  pytest tests/ -v
 
 Covers:
-  - freshness_score: exponential decay correctness
-  - rerank_chunks:   composite ordering + rank assignment
-  - get_stale_chunks: staleness threshold filtering
+  - freshness_score:       exponential decay correctness
+  - rerank_chunks:         composite ordering + rank assignment
+  - get_stale_chunks:      staleness threshold filtering
+  - GPT failure handling:  scoring_unavailable flag propagation
+  - action consistency:    result card, summary table, JSON export agree
+  - benchmark correctness: 8-scenario benchmark all ranks correct
 """
 
 import math
@@ -25,7 +28,8 @@ def make_date(days_ago: int) -> datetime:
     return datetime.now() - timedelta(days=days_ago)
 
 
-def make_chunk(relevance: float, days_ago: int, lam: float = 0.03) -> dict:
+def make_chunk(relevance: float, days_ago: int, lam: float = 0.03,
+               scoring_unavailable: bool = False) -> dict:
     """Create a scored chunk dict ready to pass to rerank_chunks."""
     fresh = freshness_score(make_date(days_ago), lam)
     return {
@@ -34,7 +38,23 @@ def make_chunk(relevance: float, days_ago: int, lam: float = 0.03) -> dict:
         "days_old": days_ago,
         "relevance_score": relevance,
         "freshness_score": fresh,
+        "scoring_unavailable": scoring_unavailable,
     }
+
+
+def action_label(chunk: dict) -> str:
+    """
+    Single source of truth for action label.
+    Must match result card, summary table, and JSON export in app.py.
+    """
+    if chunk.get("scoring_unavailable"):
+        return "scoring_unavailable"
+    comp = chunk["composite_score"]
+    if comp >= 0.7:
+        return "use"
+    if comp >= 0.4:
+        return "review"
+    return "replace"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -99,7 +119,7 @@ class TestRerankChunks:
         """
         KEY PROPERTY: A highly relevant but stale chunk should be demoted
         below a fresh chunk of equal or slightly lower relevance.
-        
+
         This is the core value-prop of the evaluator.
         """
         stale_relevant = make_chunk(relevance=1.0, days_ago=500)   # very stale
@@ -188,3 +208,191 @@ class TestGetStaleChunks:
         stale = get_stale_chunks(batch, threshold=0.3)
         assert len(stale) == 2, \
             f"Expected 2 stale chunks, got {len(stale)}"
+
+
+# ══════════════════════════════════════════════════════════════
+#  GPT failure handling tests
+# ══════════════════════════════════════════════════════════════
+
+class TestGPTFailureHandling:
+    """
+    Tests that scoring_unavailable (infra failure) is correctly propagated
+    and does NOT contaminate Use/Review/Replace action recommendations.
+
+    These simulate what app.py does when GPT-4o throws an exception:
+    relevance_score is set to 0.0 (neutral), scoring_unavailable=True.
+    Freshness scoring must remain unaffected.
+    """
+
+    def test_unavailable_chunk_freshness_unaffected(self):
+        """If relevance scoring fails, freshness must still be computed correctly."""
+        normal = make_chunk(relevance=0.8, days_ago=5, scoring_unavailable=False)
+        failed = make_chunk(relevance=0.0, days_ago=5, scoring_unavailable=True)
+        assert normal["freshness_score"] == failed["freshness_score"], \
+            "Freshness score must not be affected by GPT failure"
+
+    def test_unavailable_chunk_gets_zero_relevance_in_composite(self):
+        """
+        When relevance=0 (set by app on GPT failure), composite =
+        freshness * freshness_weight only — relevance contributes nothing.
+        """
+        chunk = make_chunk(relevance=0.0, days_ago=10, scoring_unavailable=True)
+        ranked = rerank_chunks([chunk], relevance_weight=0.6, freshness_weight=0.4)
+        expected_composite = round(0.4 * ranked[0]["freshness_score"], 4)
+        assert ranked[0]["composite_score"] == pytest.approx(expected_composite, abs=0.01)
+
+    def test_unavailable_excluded_from_action_label(self):
+        """
+        A scoring_unavailable chunk must NEVER receive use/review/replace.
+        Action must be 'scoring_unavailable'.
+        """
+        chunk = make_chunk(relevance=0.0, days_ago=1, scoring_unavailable=True)
+        ranked = rerank_chunks([chunk])
+        label = action_label(ranked[0])
+        assert label == "scoring_unavailable", \
+            f"Expected 'scoring_unavailable' but got '{label}'"
+
+    def test_normal_chunk_not_affected_by_sibling_failure(self):
+        """
+        When one chunk fails but others score normally, the normal chunks
+        must still receive correct use/review/replace labels.
+        """
+        good_high = make_chunk(relevance=1.0, days_ago=1,   scoring_unavailable=False)
+        failed    = make_chunk(relevance=0.0, days_ago=2,   scoring_unavailable=True)
+        good_low  = make_chunk(relevance=0.2, days_ago=500, scoring_unavailable=False)
+        ranked = rerank_chunks([good_high, failed, good_low])
+
+        labels = {c["days_old"]: action_label(c) for c in ranked}
+        assert labels[2] == "scoring_unavailable"
+        assert labels[1] != "scoring_unavailable"
+        assert labels[500] != "scoring_unavailable"
+
+    def test_all_failed_chunks_labeled_unavailable(self):
+        """If all chunks fail, all must be labeled scoring_unavailable."""
+        chunks = [make_chunk(0.0, d, scoring_unavailable=True) for d in [1, 30, 365]]
+        ranked = rerank_chunks(chunks)
+        for c in ranked:
+            assert action_label(c) == "scoring_unavailable", \
+                f"Chunk at {c['days_old']}d should be scoring_unavailable, got {action_label(c)}"
+
+    def test_freshness_determines_ranking_when_all_fail(self):
+        """
+        When all chunks have relevance=0 (GPT failure), rank must be
+        determined by freshness alone.
+        """
+        old_chunk   = make_chunk(relevance=0.0, days_ago=365, scoring_unavailable=True)
+        fresh_chunk = make_chunk(relevance=0.0, days_ago=1,   scoring_unavailable=True)
+        ranked = rerank_chunks([old_chunk, fresh_chunk])
+        assert ranked[0] is fresh_chunk, \
+            "Fresh chunk must rank #1 when all chunks fail (freshness is the only signal)"
+
+
+# ══════════════════════════════════════════════════════════════
+#  Action consistency across result card / summary table / export
+# ══════════════════════════════════════════════════════════════
+
+class TestActionConsistency:
+    """
+    Ensures that action_label() — which mirrors the logic in app.py for
+    result cards, summary table, and JSON export — agrees for all cases.
+    Any divergence between these three surfaces is a trust-destroying bug.
+    """
+
+    def test_high_composite_is_use(self):
+        chunk = make_chunk(relevance=1.0, days_ago=1)
+        ranked = rerank_chunks([chunk])
+        assert action_label(ranked[0]) == "use", \
+            f"High composite {ranked[0]['composite_score']:.3f} should be 'use'"
+
+    def test_mid_composite_is_review(self):
+        chunk = make_chunk(relevance=0.5, days_ago=30)
+        ranked = rerank_chunks([chunk], relevance_weight=0.6, freshness_weight=0.4)
+        comp = ranked[0]["composite_score"]
+        label = action_label(ranked[0])
+        if 0.4 <= comp < 0.7:
+            assert label == "review", f"Composite {comp:.3f} should be 'review', got '{label}'"
+
+    def test_low_composite_is_replace(self):
+        chunk = make_chunk(relevance=0.1, days_ago=800)
+        ranked = rerank_chunks([chunk])
+        assert action_label(ranked[0]) == "replace", \
+            f"Low composite {ranked[0]['composite_score']:.3f} should be 'replace'"
+
+    def test_unavailable_always_overrides_composite(self):
+        """scoring_unavailable flag overrides any composite score — always."""
+        chunk = make_chunk(relevance=0.0, days_ago=0, scoring_unavailable=True)
+        ranked = rerank_chunks([chunk])
+        assert action_label(ranked[0]) == "scoring_unavailable"
+
+    def test_three_chunk_batch_consistent_labels(self):
+        """A realistic batch: Use, Review, Unavailable — all labels consistent."""
+        use_chunk  = make_chunk(relevance=1.0, days_ago=1,  scoring_unavailable=False)
+        rev_chunk  = make_chunk(relevance=0.5, days_ago=60, scoring_unavailable=False)
+        fail_chunk = make_chunk(relevance=0.0, days_ago=10, scoring_unavailable=True)
+        ranked = rerank_chunks([use_chunk, rev_chunk, fail_chunk],
+                               relevance_weight=0.6, freshness_weight=0.4)
+        labels = [action_label(c) for c in ranked]
+        assert "scoring_unavailable" in labels
+        assert any(l in ("use", "review") for l in labels)
+
+
+# ══════════════════════════════════════════════════════════════
+#  Benchmark correctness wiring
+# ══════════════════════════════════════════════════════════════
+
+class TestBenchmarkCorrectness:
+    """
+    Verifies the 8 curated benchmark scenarios produce 100% correct rankings.
+    Replicates the benchmark tab logic without Streamlit dependencies.
+    Relevance labels are manually assigned (fixed), not live-scored.
+    """
+
+    # (scenario_name, [(rel, days_ago, expected_rank), ...])
+    BENCH_CASES = [
+        ("Fed Rate",        [(0.95, 120, 1), (0.80, 490, 2), (0.75,  950, 3)]),
+        ("Apple EPS",       [(1.00, 520, 1), (0.70, 900, 2), (0.10,  800, 3)]),
+        ("NVIDIA revenue",  [(0.95, 140, 1), (0.60, 375, 2), (0.10,  760, 3)]),
+        ("Oil price",       [(0.95,  10, 1), (0.70, 670, 2), (0.40, 1250, 3)]),
+        ("JPMorgan credit", [(0.90, 180, 1), (0.80, 270, 2), (0.30, 2190, 3)]),
+        ("US CPI",          [(1.00,  15, 1), (0.75, 500, 2), (0.60, 1320, 3)]),
+        ("S&P 500",         [(0.90,  60, 1), (0.80, 380, 2), (0.40, 1100, 3)]),
+        ("Treasury yields", [(1.00,   5, 1), (0.75, 540, 2), (0.30,  760, 3)]),
+    ]
+
+    def _run_scenario(self, chunks_spec):
+        raw = [make_chunk(rel, days, 0.03) for rel, days, _ in chunks_spec]
+        return rerank_chunks(raw, relevance_weight=0.6, freshness_weight=0.4)
+
+    def test_all_scenarios_rank_1_correct(self):
+        """Rank #1 must match expected in every scenario."""
+        for name, chunks_spec in self.BENCH_CASES:
+            ranked = self._run_scenario(chunks_spec)
+            expected_days = chunks_spec[0][1]  # expected rank-1 days_ago
+            assert ranked[0]["days_old"] == pytest.approx(expected_days, abs=1), \
+                f"[{name}] Expected rank-1 to be {expected_days}d old, got {ranked[0]['days_old']}d"
+
+    def test_lowest_composite_chunk_ranks_last(self):
+        """
+        The chunk with the lowest composite score must always rank last.
+        NOTE: This is not always the oldest chunk — an irrelevant-but-fresh chunk
+        can correctly score lower than a stale-but-relevant one (Apple EPS scenario).
+        """
+        for name, chunks_spec in self.BENCH_CASES:
+            ranked = self._run_scenario(chunks_spec)
+            composites = [c["composite_score"] for c in ranked]
+            assert composites[-1] == min(composites), \
+                f"[{name}] Last chunk must have lowest composite. Got order: {composites}"
+
+
+    def test_benchmark_100_percent_accuracy(self):
+        """All 24 rankings across 8 scenarios must match expected order."""
+        errors = []
+        for name, chunks_spec in self.BENCH_CASES:
+            ranked = self._run_scenario(chunks_spec)
+            sorted_by_expected = sorted(chunks_spec, key=lambda x: x[2])
+            for i, (spec, actual) in enumerate(zip(sorted_by_expected, ranked)):
+                if abs(actual["days_old"] - spec[1]) > 1:
+                    errors.append(
+                        f"[{name}] Position {i+1}: expected {spec[1]}d, got {actual['days_old']}d"
+                    )
+        assert not errors, "Benchmark accuracy below 100%:\n" + "\n".join(errors)

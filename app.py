@@ -738,7 +738,13 @@ with tab_eval:
             "Relevance": round(c["relevance_score"],3),
             "Freshness": round(c["freshness_score"],3),
             "Composite": round(c["composite_score"],3),
-            "Action": "✅ Use" if c["composite_score"]>=0.7 else "⚠️ Review" if c["composite_score"]>=0.4 else "❌ Replace",
+            # Mirror result-card logic — unavailable chunks excluded from recommendations
+            "Action": (
+                "⚠️ Unavailable" if c.get("scoring_unavailable")
+                else "✅ Use" if c["composite_score"]>=0.7
+                else "⚠️ Review" if c["composite_score"]>=0.4
+                else "❌ Replace"
+            ),
             "AI Reason": c["relevance_reason"],
         } for c in ranked])
         st.dataframe(df, hide_index=True, width="stretch", column_config={
@@ -765,7 +771,14 @@ with tab_eval:
                 "date":c["date"],"days_old":c["days_old"],
                 "relevance":c["relevance_score"],"freshness":c["freshness_score"],
                 "composite":c["composite_score"],"reason":c["relevance_reason"],
-                "action":"use" if c["composite_score"]>=0.7 else "review" if c["composite_score"]>=0.4 else "replace",
+                # scoring_unavailable: infra failure ≠ model judgment — excluded from action
+                "scoring_unavailable": c.get("scoring_unavailable", False),
+                "action":(
+                    "scoring_unavailable" if c.get("scoring_unavailable")
+                    else "use" if c["composite_score"]>=0.7
+                    else "review" if c["composite_score"]>=0.4
+                    else "replace"
+                ),
             } for c in ranked],
             "summary":{"top":top_c,"avg":round(avg_c,4),"stale":stale_count}
         }
@@ -925,10 +938,12 @@ with tab_bench:
     st.markdown(
         '<div style="margin-top:1rem;font-size:0.78rem;color:rgba(200,200,224,0.35);line-height:1.7;">'
         '<strong style="color:rgba(200,200,224,0.55);">How to read this:</strong> '
-        'Relevance is keyword-scored (deterministic, no API key). Freshness = e^(&minus;0.03&times;days). '
-        'Composite = 0.6&times;Rel + 0.4&times;Fresh. The critical property is that '
-        'Rank = Expected in every row — demonstrating the reranker correctly '
-        'surfaces the freshest-and-most-relevant chunk first.</div>',
+        'Relevance labels are <strong style="color:rgba(200,200,224,0.5);">manually assigned fixed values</strong> '
+        '(not live-scored), chosen to represent realistic retrieval scenarios. '
+        'Freshness = e^(&minus;0.03&times;days). '
+        'Composite = 0.6&times;Rel + 0.4&times;Fresh. '
+        'The critical property is that Rank = Expected in every row — demonstrating the reranker '
+        'correctly demotes stale-but-relevant chunks.</div>',
         unsafe_allow_html=True
     )
 
