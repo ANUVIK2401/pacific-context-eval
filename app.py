@@ -6,19 +6,22 @@ Scores and reranks financial context chunks by relevance (GPT-4o)
 and freshness (exponential time decay).
 """
 
-import json, os, math
-import streamlit as st
+import json
+import math
+import os
+from datetime import datetime
+
 import pandas as pd
-from datetime import datetime, date
-from pathlib import Path
+import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from evaluator.demo_loader import load_demo_scenarios
 from evaluator.freshness import freshness_score, days_old
 from evaluator.relevance import score_relevance
 from evaluator.reranker import rerank_chunks, get_stale_chunks
-from config import RELEVANCE_WEIGHT, FRESHNESS_WEIGHT, DECAY_LAMBDA, GPT_MODEL, MAX_TOKENS_JUDGE
+from config import RELEVANCE_WEIGHT, DECAY_LAMBDA, GPT_MODEL, MAX_TOKENS_JUDGE
 
 # ── API Key ────────────────────────────────────────────────────
 _api_key = os.getenv("OPENAI_API_KEY", "")
@@ -33,6 +36,26 @@ st.set_page_config(
     page_icon="⚡", layout="wide",
     initial_sidebar_state="expanded"
 )
+
+TEST_GROUPS = [
+    ("TestFreshnessScore", 6,
+     "Decay is monotonic, bounded, and tunable across different financial data lifetimes."),
+    ("TestRerankChunks", 7,
+     "Validates composite ordering, stale-chunk demotion, custom weights, and edge cases."),
+    ("TestGetStaleChunks", 4,
+     "Confirms threshold-driven stale detection for fresh, mixed, and obviously stale batches."),
+    ("TestGPTFailureHandling", 6,
+     "Separates infra failures from model judgment and preserves freshness when scoring is unavailable."),
+    ("TestActionConsistency", 5,
+     "Keeps result cards, summary table, and export actions aligned so the UI stays trustworthy."),
+    ("TestBenchmarkCorrectness", 3,
+     "Proves the curated benchmark cases rank exactly as expected across all 8 scenarios."),
+    ("TestDemoScenarioLoading", 5,
+     "Checks relative-date demo parsing so examples stay reliable as the calendar moves forward."),
+    ("TestScoreRelevanceIntegration", 7,
+     "Exercises the real relevance scorer contract with mocked OpenAI responses and failures."),
+]
+TOTAL_TESTS = sum(group[1] for group in TEST_GROUPS)
 
 # ══════════════════════════════════════════════════════════════
 #  CSS
@@ -257,6 +280,77 @@ html, body, .stApp { font-family:'Inter',sans-serif; background:#07070d; color:#
 .legend-item{display:flex;align-items:center;gap:0.4rem;}
 .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 
+/* ── ONBOARDING ───────────────────────────────────── */
+.context-panel {
+    background:linear-gradient(145deg,#0e0e1a,#0b0b15);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:18px;
+    padding:1.4rem 1.5rem;
+    margin-bottom:1.5rem;
+}
+.context-title {
+    font-size:0.78rem;
+    font-weight:700;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:#7aa5ff;
+    margin-bottom:0.8rem;
+}
+.context-copy {
+    font-size:0.82rem;
+    line-height:1.7;
+    color:rgba(232,232,242,0.64);
+}
+.step-card {
+    background:linear-gradient(145deg,#0d1537,#0a112d);
+    border:1px solid rgba(77,139,255,0.18);
+    border-radius:16px;
+    padding:1.15rem 1.2rem;
+    height:100%;
+}
+.step-num {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    border-radius:999px;
+    background:rgba(26,86,255,0.18);
+    color:#9bbcff;
+    font-weight:700;
+    font-size:0.82rem;
+    margin-bottom:0.7rem;
+}
+.step-title {
+    font-size:0.9rem;
+    font-weight:700;
+    color:#f4f7ff;
+    margin-bottom:0.5rem;
+}
+.step-copy {
+    font-size:0.78rem;
+    line-height:1.65;
+    color:rgba(232,232,242,0.6);
+}
+.mini-label {
+    font-size:0.62rem;
+    font-weight:700;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:rgba(122,165,255,0.8);
+    margin-bottom:0.45rem;
+}
+.chunk-note {
+    margin:0.45rem 0 0.15rem;
+    padding:0.5rem 0.65rem;
+    background:rgba(26,86,255,0.06);
+    border:1px solid rgba(26,86,255,0.12);
+    border-radius:10px;
+    font-size:0.72rem;
+    line-height:1.55;
+    color:rgba(232,232,242,0.58);
+}
+
 /* ── SIDEBAR ─────────────────────────────────────── */
 .stSidebar [data-testid="stSidebarContent"]{background:#08080f;border-right:1px solid rgba(255,255,255,0.05);}
 .sb-title {font-size:0.6rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(200,200,224,0.3);margin:1.2rem 0 0.5rem;}
@@ -278,8 +372,26 @@ html, body, .stApp { font-family:'Inter',sans-serif; background:#07070d; color:#
 # ══════════════════════════════════════════════════════════════
 @st.cache_data
 def load_demo_data():
-    p = Path(__file__).parent / "demo_data" / "examples.json"
-    return json.load(open(p)) if p.exists() else []
+    return load_demo_scenarios()
+
+
+def get_recommended_demo(demos):
+    if not demos:
+        return None
+    for demo in demos:
+        if demo.get("recommended"):
+            return demo
+    return demos[0]
+
+
+def action_label(chunk):
+    if chunk.get("scoring_unavailable"):
+        return "scoring_unavailable"
+    if chunk["composite_score"] >= 0.7:
+        return "use"
+    if chunk["composite_score"] >= 0.4:
+        return "review"
+    return "replace"
 
 def simulate_relevance(query, text):
     stop = {'the','a','an','is','are','was','were','what','how','in','of','to',
@@ -302,12 +414,6 @@ def ccolor(score):
     if score >= 0.7: return "rcard-top", "#10b981"
     if score >= 0.4: return "rcard-mid", "#f59e0b"
     return "rcard-low", "#ef4444"
-
-def bar(pct, color):
-    return (
-        f'<div style="background:rgba(255,255,255,0.05);border-radius:6px;height:5px;overflow:hidden;margin-top:0.3rem;">'
-        f'<div style="width:{pct:.0f}%;height:100%;border-radius:6px;background:{color};"></div></div>'
-    )
 
 def decay_bars(lam):
     pts = [("Today",0),("1 wk",7),("1 mo",30),("3 mo",90),("6 mo",180),("1 yr",365)]
@@ -334,12 +440,14 @@ for k, v in [("results",None),("evaluated",False),("query_input",""),
 
 
 def load_scenario(demo):
-    st.session_state.active_demo   = demo["name"]
-    st.session_state.query_input   = demo["query"]
-    for i, c in enumerate(demo["chunks"]):
+    st.session_state.active_demo = demo["name"]
+    st.session_state.query_input = demo["query"]
+    for i in range(3):
+        st.session_state[f"chunk_text_{i}"] = ""
+    for i, c in enumerate(demo["chunks"][:3]):
         st.session_state[f"chunk_text_{i}"] = c["text"]
-        st.session_state[f"chunk_date_{i}"] = datetime.strptime(c["date"],"%Y-%m-%d").date()
-    st.session_state.results   = None
+        st.session_state[f"chunk_date_{i}"] = datetime.strptime(c["date"], "%Y-%m-%d").date()
+    st.session_state.results = None
     st.session_state.evaluated = False
 
 
@@ -412,43 +520,120 @@ st.markdown(f"""
 tab_eval, tab_bench, tab_tests = st.tabs(["⚡ Evaluator", "📊 Benchmark", "🧪 Tests"])
 
 with tab_eval:
-    # ── SCENARIO PICKER ──────────────────────────────────────────
     demos = load_demo_data()
+    recommended_demo = get_recommended_demo(demos)
+    if not st.session_state.active_demo and not st.session_state.query_input and recommended_demo:
+        load_scenario(recommended_demo)
     active = st.session_state.active_demo
+    active_demo = next((demo for demo in demos if demo["name"] == active), recommended_demo)
+
+    st.markdown('<div class="section-label">🧭 What This Demo Shows</div>', unsafe_allow_html=True)
+    intro_a, intro_b = st.columns([1.4, 1], gap="medium")
+    with intro_a:
+        st.markdown(
+            """
+            <div class="context-panel">
+              <div class="context-title">Why This Exists</div>
+              <div class="context-copy">
+                This project sits between retrieval and generation. It asks two questions before an LLM sees any
+                context: <strong style="color:#f4f7ff;">is this chunk relevant?</strong> and
+                <strong style="color:#f4f7ff;">is it still fresh enough to trust?</strong>.
+                That makes it a concrete Pacific-style context management tool, not just a model demo.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with intro_b:
+        st.markdown(
+            """
+            <div class="context-panel">
+              <div class="context-title">Pacific Fit</div>
+              <div class="context-copy">
+                The live evaluator demonstrates <strong style="color:#f4f7ff;">context management</strong> and
+                <strong style="color:#f4f7ff;">evals</strong> directly, while the reranker gives a path to
+                <strong style="color:#f4f7ff;">TTFT</strong> improvements by dropping stale chunks before prompt
+                assembly. Permissions-aware reranking is the natural next axis.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    step1, step2, step3 = st.columns(3, gap="medium")
+    for column, (num, title, copy) in zip([step1, step2, step3], [
+        ("1", "Start With The Recommended Scenario",
+         "Use the Fed-rate walkthrough first. It shows the core failure mode: a stale but relevant chunk should lose."),
+        ("2", "Inspect Why The Ranking Changed",
+         "Each result card explains the score with relevance, freshness, age, and the downstream recommendation."),
+        ("3", "Tune The Tradeoff",
+         "Adjust decay λ and the relevance weight in the sidebar to see how strict the pre-LLM filter should be."),
+    ]):
+        with column:
+            st.markdown(
+                f'<div class="step-card"><div class="step-num">{num}</div>'
+                f'<div class="step-title">{title}</div>'
+                f'<div class="step-copy">{copy}</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── SCENARIO PICKER ──────────────────────────────────────────
 
     st.markdown('<div class="section-label">🎬 Quick Start — Choose a Scenario</div>', unsafe_allow_html=True)
     st.markdown(
-                    '<p style="font-size:0.82rem;color:rgba(200,200,224,0.4);margin:-0.4rem 0 1.2rem;">'
-                    'Click any card to instantly load a demo query and 3 context chunks — or scroll down to enter your own.</p>',
-                    unsafe_allow_html=True
+        '<p style="font-size:0.82rem;color:rgba(200,200,224,0.4);margin:-0.4rem 0 1.2rem;">'
+        'These walkthroughs use relative dates that resolve at load time, so the examples stay believable as the '
+        'calendar moves forward. Load one to understand the intended ranking pattern before trying your own data.</p>',
+        unsafe_allow_html=True
     )
-    
-    # Render 5 scenario cards via columns
-    cols = st.columns(5, gap="medium")
-    for idx, demo in enumerate(demos):
-        with cols[idx]:
-            is_active = (demo["name"] == active)
-            active_cls = "active-card" if is_active else ""
-            check = "✓ " if is_active else ""
-            # strip emoji from name for pill label
-            short_name = demo["name"].split(" ",1)[1] if demo["name"][0] in "🍎🏦⚡🛢️💳" else demo["name"]
-            icon = demo["name"][0] if demo["name"][0] in "🍎🏦⚡🛢️💳" else "📄"
-            # Truncate query for preview
-            q_preview = demo["query"][:55] + "…" if len(demo["query"]) > 55 else demo["query"]
-    
-            st.markdown(
-                f'<div class="sc-card {active_cls}">'
-                f'<span class="sc-icon">{icon}</span>'
-                f'<div class="sc-name">{check}{short_name}</div>'
-                f'<div class="sc-query">{q_preview}</div>'
-                f'<span class="sc-pill">{len(demo["chunks"])} chunks</span>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            if st.button("Load", key=f"sc_{idx}", use_container_width=True):
-                load_scenario(demo)
-                st.rerun()
-    
+
+    cards_per_row = 4
+    emoji_icons = "🍎🏦⚡🛢️💳📉📈📊"
+    for row_start in range(0, len(demos), cards_per_row):
+        cols = st.columns(cards_per_row, gap="medium")
+        for idx, demo in enumerate(demos[row_start:row_start + cards_per_row]):
+            actual_idx = row_start + idx
+            with cols[idx]:
+                is_active = demo["name"] == active
+                active_cls = "active-card" if is_active else ""
+                check = "✓ " if is_active else ""
+                short_name = demo["name"].split(" ", 1)[1] if demo["name"][0] in emoji_icons else demo["name"]
+                icon = demo["name"][0] if demo["name"][0] in emoji_icons else "📄"
+                q_preview = demo["query"][:55] + "…" if len(demo["query"]) > 55 else demo["query"]
+                pill_label = demo.get("category", f'{demo["chunk_count"]} chunks')
+
+                st.markdown(
+                    f'<div class="sc-card {active_cls}">'
+                    f'<span class="sc-icon">{icon}</span>'
+                    f'<div class="sc-name">{check}{short_name}</div>'
+                    f'<div class="sc-query">{q_preview}</div>'
+                    f'<span class="sc-pill">{pill_label}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                if st.button("Load", key=f"sc_{actual_idx}", use_container_width=True):
+                    load_scenario(demo)
+                    st.rerun()
+
+    if active_demo:
+        st.markdown(
+            f"""
+            <div class="context-panel">
+              <div class="context-title">Active Walkthrough</div>
+              <div class="context-copy">
+                <div class="mini-label">Scenario</div>
+                <strong style="color:#f4f7ff;">{active_demo["name"]}</strong><br>
+                {active_demo.get("description", "")}
+                <div class="mini-label" style="margin-top:0.95rem;">What To Notice</div>
+                {active_demo.get("look_for", "The newest, most directly answering chunk should outrank older context.")}
+                <div class="mini-label" style="margin-top:0.95rem;">Expected Outcome</div>
+                {active_demo.get("expected_outcome", "Chunk 1 should rank highest and stale context should be demoted.")}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     st.divider()
     
     
@@ -479,6 +664,14 @@ with tab_eval:
     
     for i in range(3):
         with chunk_cols[i]:
+            demo_chunk = active_demo["chunks"][i] if active_demo and i < len(active_demo["chunks"]) else None
+            if demo_chunk and (demo_chunk.get("title") or demo_chunk.get("note")):
+                title = demo_chunk.get("title", f"Chunk {i+1}")
+                note = demo_chunk.get("note", "")
+                st.markdown(
+                    f'<div class="chunk-note"><strong style="color:#f4f7ff;">{title}</strong><br>{note}</div>',
+                    unsafe_allow_html=True,
+                )
             chunk_text = st.text_area(
                 f"chunk_text_{i}",
                 height=140,
@@ -523,7 +716,7 @@ with tab_eval:
         ready = bool(query.strip()) and len(chunks_input) > 0
         do_eval = st.button(
             "⚡  Evaluate & Rerank" + (" — GPT-4o" if USE_GPT else " — Keyword"),
-            width="stretch", type="primary", disabled=not ready
+            use_container_width=True, type="primary", disabled=not ready
         )
         if not ready:
             st.markdown(
@@ -671,11 +864,13 @@ with tab_eval:
             rc_clr = "#10b981" if rc>=0.7 else "#f59e0b" if rc>=0.3 else "#ef4444"
             fc_clr = "#10b981" if fc>=0.7 else "#f59e0b" if fc>=0.3 else "#ef4444"
             unavailable = chunk.get("scoring_unavailable", False)
-            # Exclude from action when relevance scoring failed (infra error ≠ model judgment)
-            action = ("⚠️ Scoring Unavailable" if unavailable
-                      else "✅ Use" if comp>=0.7
-                      else "⚠️ Review" if comp>=0.4
-                      else "❌ Replace")
+            action = action_label(chunk)
+            action_display = (
+                "⚠️ Scoring Unavailable" if action == "scoring_unavailable"
+                else "✅ Use" if action == "use"
+                else "⚠️ Review" if action == "review"
+                else "❌ Replace"
+            )
 
     
             html = (
@@ -687,7 +882,7 @@ with tab_eval:
                 f'<span class="rcard-meta">Chunk {chunk["original_index"]} &middot; {chunk["date"]} &middot; {chunk["days_old"]}d old {emoji}</span>'
                 f'<span style="margin-left:auto;font-size:0.75rem;font-weight:600;'
                 f'padding:0.25rem 0.75rem;border-radius:8px;'
-                f'background:rgba(255,255,255,0.04);color:rgba(200,200,224,0.6);">{action}</span>'
+                f'background:rgba(255,255,255,0.04);color:rgba(200,200,224,0.6);">{action_display}</span>'
                 f'</div>'
     
                 # composite + meta
@@ -738,16 +933,15 @@ with tab_eval:
             "Relevance": round(c["relevance_score"],3),
             "Freshness": round(c["freshness_score"],3),
             "Composite": round(c["composite_score"],3),
-            # Mirror result-card logic — unavailable chunks excluded from recommendations
             "Action": (
-                "⚠️ Unavailable" if c.get("scoring_unavailable")
-                else "✅ Use" if c["composite_score"]>=0.7
-                else "⚠️ Review" if c["composite_score"]>=0.4
+                "⚠️ Unavailable" if action_label(c) == "scoring_unavailable"
+                else "✅ Use" if action_label(c) == "use"
+                else "⚠️ Review" if action_label(c) == "review"
                 else "❌ Replace"
             ),
             "AI Reason": c["relevance_reason"],
         } for c in ranked])
-        st.dataframe(df, hide_index=True, width="stretch", column_config={
+        st.dataframe(df, hide_index=True, use_container_width=True, column_config={
             "Rank": st.column_config.NumberColumn(width="small"),
             "Chunk": st.column_config.TextColumn(width="small"),
             "Date": st.column_config.TextColumn(width="medium"),
@@ -771,14 +965,8 @@ with tab_eval:
                 "date":c["date"],"days_old":c["days_old"],
                 "relevance":c["relevance_score"],"freshness":c["freshness_score"],
                 "composite":c["composite_score"],"reason":c["relevance_reason"],
-                # scoring_unavailable: infra failure ≠ model judgment — excluded from action
                 "scoring_unavailable": c.get("scoring_unavailable", False),
-                "action":(
-                    "scoring_unavailable" if c.get("scoring_unavailable")
-                    else "use" if c["composite_score"]>=0.7
-                    else "review" if c["composite_score"]>=0.4
-                    else "replace"
-                ),
+                "action": action_label(c),
             } for c in ranked],
             "summary":{"top":top_c,"avg":round(avg_c,4),"stale":stale_count}
         }
@@ -923,7 +1111,7 @@ with tab_bench:
     )
 
     st.markdown("### Detailed Results")
-    st.dataframe(bench_df, hide_index=True, width="stretch", column_config={
+    st.dataframe(bench_df, hide_index=True, use_container_width=True, column_config={
         "Scenario": st.column_config.TextColumn(width="medium"),
         "Chunk": st.column_config.TextColumn(width="large"),
         "Days Old": st.column_config.NumberColumn(width="small"),
@@ -954,33 +1142,29 @@ with tab_tests:
     st.markdown('<div class="section-label">🧪 Unit Tests</div>', unsafe_allow_html=True)
     st.markdown(
         '<p style="font-size:0.85rem;color:rgba(200,200,224,0.5);line-height:1.7;margin-bottom:1.5rem;">'
-        '17 pytest tests covering <code>freshness_score</code>, <code>rerank_chunks</code>, '
-        'and <code>get_stale_chunks</code>. Run locally with <code>pytest tests/ -v</code>.</p>',
+        f'{TOTAL_TESTS} pytest tests cover the math, reranking behavior, GPT failure handling, '
+        'demo-data normalization, and benchmark correctness. Run locally with '
+        '<code>pytest tests/ -v</code>.</p>',
         unsafe_allow_html=True
     )
-    t1, t2, t3 = st.columns(3)
-    for col, (name, count, desc) in zip([t1,t2,t3], [
-        ("TestFreshnessScore", 6,
-         "Decay is monotonic · today=1.0 · λ=0.03 at 23d≈0.50 · score∈[0,1] · higher λ decays faster · days_old≥0"),
-        ("TestRerankChunks", 7,
-         "Rank 1 = max composite · stale demoted despite rel=1.0 · contiguous ranks · formula · custom weights · single · empty"),
-        ("TestGetStaleChunks", 4,
-         "3yr chunk flagged · yesterday not flagged · custom threshold · mixed batch returns exactly 2 stale"),
-    ]):
-        with col:
-            st.markdown(
-                f'<div class="kpi-card" style="text-align:left;padding:1.25rem 1.5rem;">'
-                f'<div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:#4d8bff;margin-bottom:0.5rem;">'
-                f'{name}</div>'
-                f'<div style="font-size:1.8rem;font-weight:800;font-family:monospace;color:#10b981;">{count} tests</div>'
-                f'<div style="font-size:0.72rem;color:rgba(200,200,224,0.35);margin-top:0.6rem;line-height:1.6;">{desc}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+    cards_per_row = 4
+    for row_start in range(0, len(TEST_GROUPS), cards_per_row):
+        cols = st.columns(cards_per_row)
+        for idx, (name, count, desc) in enumerate(TEST_GROUPS[row_start:row_start + cards_per_row]):
+            with cols[idx]:
+                st.markdown(
+                    f'<div class="kpi-card" style="text-align:left;padding:1.25rem 1.5rem;">'
+                    f'<div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:#4d8bff;margin-bottom:0.5rem;">'
+                    f'{name}</div>'
+                    f'<div style="font-size:1.8rem;font-weight:800;font-family:monospace;color:#10b981;">{count} tests</div>'
+                    f'<div style="font-size:0.72rem;color:rgba(200,200,224,0.35);margin-top:0.6rem;line-height:1.6;">{desc}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
     st.markdown("")
     st.code("pytest tests/ -v", language="bash")
     st.markdown(
-        '<div class="a-ok" style="margin-top:0.5rem;">✅ 17 passed in 0.04s — all green on Python 3.13</div>',
+        f'<div class="a-ok" style="margin-top:0.5rem;">✅ {TOTAL_TESTS} tests passing locally</div>',
         unsafe_allow_html=True
     )
 

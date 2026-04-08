@@ -1,5 +1,5 @@
 **Anuvik Thota**
-anuvik.thota.work@gmail.com · github.com/ANUVIK2401 · linkedin.com/in/anuvik-thota
+anuvik.thota.work@gmail.com · github.com/ANUVIK2401
 
 Pacific Engineering Team
 builders@pacific.app
@@ -8,23 +8,41 @@ April 8, 2026
 
 ---
 
-I built a **Context Freshness Evaluator** — a tool that scores and reranks financial context chunks along two orthogonal axes before they reach an LLM: semantic relevance (judged by GPT-4o) and temporal freshness (exponential decay: e^(−λ·t)). The output is a composite-ranked list with a per-chunk recommendation — Use, Review, or Replace — along with the AI's reasoning for each score.
+I built a **Context Freshness Evaluator** for financial RAG systems. It scores and reranks context chunks using two signals: semantic relevance (via GPT-4o) and temporal freshness (exponential time decay). Each chunk gets a Use/Review/Replace recommendation based on its composite score.
 
-**The problem.** Standard RAG pipelines retrieve context by cosine similarity. They do not account for time. A query about the current Federal Reserve rate may surface a 2022 Jackson Hole speech — highly relevant by embedding distance, but actively wrong as financial context. The model will answer confidently based on stale data. In finance, confident wrongness is worse than uncertainty. This tool makes temporal decay a first-class signal in the retrieval stack.
+**Why this matters.** I've seen firsthand how standard RAG breaks in time-sensitive domains. Cosine similarity doesn't care if data is from 2022 or 2024. A query asking "what's the current Fed rate?" could pull a perfectly relevant Jackson Hole speech from two years ago — and the model will answer confidently with outdated numbers. In finance, that's not just wrong, it's dangerous. I wanted to build something that treats time as a first-class signal, not an afterthought.
 
-**Technical decisions.** I separated relevance and freshness into independent signals intentionally. They decay at different rates and for different reasons — earnings data goes stale in days; regulatory guidance in months. By keeping them separate, each axis is interpretable, tunable per domain (λ=0.05–0.10 for price data, λ=0.01–0.02 for regulatory), and replaceable independently. The composite formula — `(relevance × w) + (freshness × (1−w))` — is deliberately transparent. A black-box scorer would be hard to trust in a production finance context where the cost of a wrong answer is real. I also separated infrastructure failures from model judgment: if GPT-4o scoring is unavailable, those chunks are flagged explicitly and excluded from action recommendations rather than silently scored as zero.
+**How I built it.** I kept relevance and freshness as separate, interpretable scores. They decay at different rates (earnings data stales in days, regulations in months), so having independent tuning knobs matters. The composite formula is simple: `(relevance × w) + (freshness × (1−w))`. No black boxes. In production finance systems, you need to be able to explain why context was included or excluded.
 
-**Why Pacific.** Pacific's focus on context management, TTFT, and agentic workflows maps directly to this problem. The three extension paths I would prioritize are: (1) a **batch evaluation pipeline** — instead of single-query evaluation, score an entire retrieval corpus against a set of canonical queries, surface systematic staleness patterns, and trigger re-ingestion alerts before failures reach users; (2) **permissions-aware reranking** — in enterprise deployments, a context chunk may be accurate, current, and relevant but inaccessible to the requesting user; adding access control as a third axis creates a single pre-LLM context filter that handles relevance, freshness, and authorization in one pass; (3) **pre-LLM context budgeting** — use the evaluator's composite scores to select the highest-signal chunks that fit within a fixed token budget, directly reducing prompt size, cost, and time-to-first-token. These are not hypothetical; they follow directly from the architecture I built and would extend it without rewrites.
+I also spent time on error handling that actually matters. If the GPT-4o scoring API goes down, those chunks get flagged explicitly rather than silently scored as zero. Infrastructure failures look different than model failures in the UI, which means you can debug the right thing when something breaks.
 
-**Proof it works.** The repository includes 31 pytest tests covering the core decay math, reranking logic, GPT infra failure handling, action label consistency across all three UI surfaces, and benchmark correctness. The application has a built-in Benchmark tab demonstrating the key correctness property on 8 curated financial scenarios: stale-but-relevant chunks are correctly demoted in every case without a live API call.
+**Where this could go at Pacific.** The architecture naturally extends to three things I'd want to build:
 
-I am genuinely interested in the problems Pacific is working on. Context management for financial AI is an underexplored layer of the stack, and I believe the approach I've built reflects both the practical engineering and the product intuition I'd bring to the team.
+1. **Batch evaluation pipeline** — instead of scoring one query at a time, run an entire corpus against canonical queries. Surface patterns like "40% of Fed-related chunks are >60 days old" before they hit users. Basically, treat context quality as something you monitor, not just something you fix when it breaks.
 
-— Anuvik Thota
+2. **Permissions-aware reranking** — in enterprise deployments, you need a third axis. A chunk can be accurate, fresh, and relevant but still wrong for a given user if they don't have access. Making this a pre-LLM filter means you handle relevance, freshness, and authorization in one pass instead of three.
+
+3. **TTFT optimization via context budgeting** — use composite scores to fit the best chunks into a fixed token budget. Drop the lowest-scoring ones before the prompt even gets built. Fewer tokens = faster first token and lower cost.
+
+**Does it work?** The repo has 43 tests covering the decay math, reranking, error handling, demo-data normalization, and a benchmark suite with 8 financial scenarios (Fed policy, Apple earnings, etc.). The benchmark runs without any API calls and proves the core property: stale-but-relevant chunks get demoted correctly every time. There's also a live Streamlit demo you can try.
+
+I'm interested in the problems Pacific is solving. The context management layer feels underexplored — everyone focuses on embeddings and retrieval but nobody's really nailing the quality control piece that sits between retrieval and generation. That gap is where production systems break, and I think the approach I built here shows how I'd think about those problems on your team.
+
+— Anuvik
 
 ---
 
-*Source: https://github.com/ANUVIK2401/pacific-context-eval*
-*Live demo: https://pacific-context-eval.streamlit.app*
-*Run: `pip install -r requirements.txt && streamlit run app.py`*
-*Test: `pytest tests/ -v` → 31 passed*
+**Links**
+Source: https://github.com/ANUVIK2401/pacific-context-eval
+Live demo: https://pacific-context-eval.streamlit.app
+
+**Setup**
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+**Tests**
+```bash
+pytest tests/ -v  # 43 passed
+```

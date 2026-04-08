@@ -1,91 +1,226 @@
 [
   {
-    "name": "🍎 Apple Q4 2024 Earnings",
-    "query": "What were Apple's Q4 2024 earnings per share?",
+    "name": "🏦 Fed Rate Policy",
+    "recommended": true,
+    "category": "Rates & Macro",
+    "query": "What is the Federal Reserve's current interest rate stance and forward guidance?",
+    "description": "This is the clearest first-run demo because it shows the exact failure mode the evaluator is designed to catch: a stale but obviously relevant macro chunk should not win just because it matches the query wording.",
+    "look_for": "Chunk 3 is highly relevant in topic space but too old to trust for a current-stance question. Chunk 1 should rank first because it is both recent and directly answerable.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. The 2022 Jackson Hole speech should be demoted despite strong semantic relevance.",
     "chunks": [
       {
-        "text": "Apple reported Q4 2024 EPS of $1.64, beating analyst estimates of $1.60. Revenue grew 6% YoY to $94.9B driven by iPhone 16 demand and continued Services momentum. iPhone revenue specifically came in at $46.2B, above consensus.",
-        "date": "2024-11-01"
+        "title": "Current policy guidance",
+        "text": "Federal Reserve minutes from December 2024 show consensus around a gradual easing path through 2025. The FOMC dot plot median projects the federal funds rate at 3.75-4.00% by year-end 2025, implying two 25bps cuts from the current 4.25-4.50% target range. One dissent favored holding.",
+        "date": "__DAYS_AGO:110__",
+        "note": "Fresh and directly answers the query."
       },
       {
-        "text": "Apple's supply chain partners in Vietnam expanded capacity by 15% in early 2023 to reduce China dependency. The shift is expected to lower production costs by 8% over three years, impacting gross margin outlook.",
-        "date": "2023-02-14"
+        "title": "Recent pivot context",
+        "text": "The Fed cut rates by 25bps in September 2024, marking the first cut since March 2020. Chair Powell cited growing confidence that inflation is on a sustainable path to 2% and noted the labor market remains broadly solid. Markets priced in two additional cuts for 2024.",
+        "date": "__DAYS_AGO:210__",
+        "note": "Relevant context, but older and not the latest guidance."
       },
       {
-        "text": "Tim Cook stated in the Q4 2024 earnings call that Services revenue hit an all-time high of $24.97B, with Apple Intelligence driving increased App Store engagement. However, no EPS figures were mentioned in this excerpt.",
-        "date": "2024-10-31"
+        "title": "Historically relevant but stale",
+        "text": "Fed Chair Powell's Jackson Hole 2022 speech signaled the most aggressive monetary tightening since the 1980s, committing to raise rates until inflation returned to 2% even at the cost of economic pain. The Fed subsequently delivered 525bps of hikes between March 2022 and July 2023.",
+        "date": "__DAYS_AGO:960__",
+        "note": "Strong keyword overlap, but dangerous for a current-stance query."
       }
     ]
   },
   {
-    "name": "🏦 Federal Reserve Rate Policy",
-    "query": "What is the current Federal Reserve interest rate policy?",
+    "name": "🍎 Apple Earnings",
+    "category": "Earnings",
+    "query": "What were Apple's Q4 2024 earnings per share and revenue breakdown?",
+    "description": "A direct-answer earnings chunk should beat broader company context and unrelated operational history. This scenario shows that freshness alone is not enough; the chunk still needs to answer the query.",
+    "look_for": "Chunk 1 contains the answer. Chunk 2 is still useful because it supports the revenue story. Chunk 3 should sink because it is both stale and only tangentially related.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. The supply-chain chunk should land in Replace territory.",
     "chunks": [
       {
-        "text": "The Fed held rates at 5.25-5.5% at its September 2023 meeting, signaling potential cuts in 2024 if inflation data continues to moderate toward the 2% target. Markets priced in 75bps of cuts for 2024.",
-        "date": "2023-09-20"
+        "title": "Quarterly answer",
+        "text": "Apple reported Q4 FY2024 EPS of $1.64, beating the $1.60 analyst consensus. Total revenue came in at $94.9B, up 6.1% YoY. iPhone revenue was $46.2B, above the $45.0B street estimate. Gross margin expanded to 46.2%, the highest since 2012, driven by Services mix shift.",
+        "date": "__DAYS_AGO:120__",
+        "note": "Directly answers EPS and revenue breakdown."
       },
       {
-        "text": "Federal Reserve minutes from December 2024 indicate consensus around gradual rate cuts through 2025, with the dot plot median projecting 3.75-4.0% by year-end 2025. One dissenting vote favored holding.",
-        "date": "2024-12-18"
+        "title": "Adjacent earnings context",
+        "text": "Apple's Services segment hit an all-time high of $24.97B in Q4 FY2024, up 12% YoY. Apple Intelligence integrations drove App Store engagement up 18% QoQ. Management guided Services to continue growing at double-digit rates through FY2025, with advertising and AppleCare as primary contributors.",
+        "date": "__DAYS_AGO:150__",
+        "note": "Relevant supporting context, but less directly tied to EPS."
       },
       {
-        "text": "Fed Chair Powell's 2022 Jackson Hole speech signaled aggressive rate hikes to combat 9.1% CPI inflation, marking the beginning of the fastest tightening cycle since the 1980s, with 525bps of hikes to follow.",
-        "date": "2022-08-26"
+        "title": "Irrelevant old company context",
+        "text": "Apple's supply chain partners in Vietnam expanded manufacturing capacity by 15% in early 2023 to reduce China concentration risk. The shift was expected to lower unit production costs by 8% over three years and improve gross margin resilience. Key suppliers include Foxconn and Luxshare.",
+        "date": "__DAYS_AGO:780__",
+        "note": "Interesting operational detail, but stale and not what the user asked."
       }
     ]
   },
   {
-    "name": "⚡ NVIDIA Data Center Revenue",
-    "query": "How is NVIDIA's data center revenue trending in 2024?",
+    "name": "⚡ NVIDIA AI Revenue",
+    "category": "AI Infrastructure",
+    "query": "How is NVIDIA's data center and AI chip revenue trending through 2024?",
+    "description": "This walkthrough mixes earnings data, product-launch context, and an outdated historical milestone. It is useful for showing why 'on-topic' is not enough in a fast-moving AI market.",
+    "look_for": "Chunk 2 may look exciting because it mentions Blackwell, but Chunk 1 should still win because actual shipped revenue is more current and more answerable.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. The old gaming crossover milestone should rank last.",
     "chunks": [
       {
-        "text": "NVIDIA reported Q3 FY2025 data center revenue of $30.8B, up 112% YoY, driven by H200 and Blackwell GPU demand from hyperscalers including Microsoft, Google, Meta, and Amazon. Gross margins hit 74.6%.",
-        "date": "2024-11-20"
+        "title": "Latest revenue signal",
+        "text": "NVIDIA Q3 FY2025 data center revenue reached $30.8B, up 112% YoY and 17% QoQ. H200 GPU shipments accelerated and Blackwell production ramped ahead of schedule. Gross margins hit 74.6%. Microsoft, Google, Meta, and Amazon were the four largest customers driving hyperscaler capex cycles.",
+        "date": "__DAYS_AGO:140__",
+        "note": "Most recent performance data and directly relevant."
       },
       {
-        "text": "NVIDIA announced the Blackwell B200 GPU architecture in March 2024, promising 4x the training performance of H100 at similar power consumption. Initial production delays pushed major shipments to late 2024.",
-        "date": "2024-03-18"
+        "title": "Launch context",
+        "text": "NVIDIA announced the Blackwell B200 GPU architecture in March 2024, claiming 4x H100 training throughput at 25x lower inference cost. Initial production was constrained by CoWoS packaging yield issues, delaying volume shipments to Q4 2024. Jensen Huang called it the most complex chip ever made.",
+        "date": "__DAYS_AGO:380__",
+        "note": "Helpful product context, but older than the actual revenue update."
       },
       {
-        "text": "NVIDIA's data center segment first surpassed gaming revenue in Q1 FY2024, with $4.28B vs $2.24B. The company flagged supply constraints limiting upside for the remainder of fiscal 2024.",
-        "date": "2023-05-24"
+        "title": "Old milestone",
+        "text": "For the first time, NVIDIA's data center segment surpassed gaming revenue in Q1 FY2024, with data center at $4.28B vs gaming at $2.24B. The company noted export control restrictions on A100/H100 sales to China beginning to impact demand, with a $400M quarterly revenue hole emerging.",
+        "date": "__DAYS_AGO:700__",
+        "note": "Historically interesting, but the numbers are outdated."
       }
     ]
   },
   {
-    "name": "🛢️ Oil Price Outlook",
-    "query": "What is the current outlook for crude oil prices?",
+    "name": "🛢️ Crude Oil Outlook",
+    "category": "Commodities",
+    "query": "What is the current crude oil price outlook and OPEC+ production strategy?",
+    "description": "Commodity queries are a good fit for this evaluator because prices and cartel policy can turn within weeks. This scenario makes the time-decay behavior obvious.",
+    "look_for": "Chunk 2 used to be highly actionable, but its production-cut stance has been overtaken by later decisions. Chunk 1 should dominate because it is both fresh and directly on point.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. Structural energy outlook should not beat current market posture.",
     "chunks": [
       {
-        "text": "Brent crude fell below $75/bbl in early April 2025 as OPEC+ announced unexpected production increases of 411,000 bpd for May, reversing prior cuts. Analysts revised 2025 price targets down to $70-78/bbl.",
-        "date": "2025-04-03"
+        "title": "Current market state",
+        "text": "Brent crude fell to $73.50/bbl in early April 2025 after OPEC+ unexpectedly announced a 411,000 bpd production increase for May, its second consecutive monthly addition. Goldman Sachs revised its 2025 Brent forecast down to $70-78/bbl, citing demand softness from China and higher-than-expected US shale output.",
+        "date": "__DAYS_AGO:8__",
+        "note": "Fresh price and policy context."
       },
       {
-        "text": "OPEC+ agreed in June 2023 to extend production cuts of 1.66 million bpd through 2024, pushing Brent briefly above $95/bbl. Saudi Arabia led the effort citing market stabilization goals.",
-        "date": "2023-06-04"
+        "title": "Old production stance",
+        "text": "OPEC+ agreed in June 2023 to extend voluntary production cuts of 1.66 million bpd through 2024, with Saudi Arabia adding an additional unilateral 1 mbpd cut. The surprise move briefly pushed Brent above $95/bbl. The group cited market stabilization goals and underwhelming demand from China's post-COVID reopening.",
+        "date": "__DAYS_AGO:670__",
+        "note": "Used to matter, but the production posture has reversed."
       },
       {
-        "text": "The IEA's 2022 World Energy Outlook projected oil demand peaking before 2030 under current policies as EV adoption accelerates. However, near-term demand from Asia remained robust above 100 mbpd.",
-        "date": "2022-10-27"
+        "title": "Structural but stale",
+        "text": "The IEA's 2022 World Energy Outlook projected global oil demand peaking before 2030 under current policies, driven by accelerating EV adoption and energy efficiency improvements. Near-term demand from emerging Asia remained robust, with global consumption above 100 million barrels per day through 2023.",
+        "date": "__DAYS_AGO:1280__",
+        "note": "Long-horizon context, not a current price answer."
       }
     ]
   },
   {
-    "name": "💳 JPMorgan Credit Quality",
-    "query": "How is JPMorgan's credit quality holding up in 2024?",
+    "name": "💳 JPMorgan Credit",
+    "category": "Credit Risk",
+    "query": "How is JPMorgan managing credit quality and consumer loan stress entering 2025?",
+    "description": "Credit quality is a good example of why stale context can sound convincing. A crisis-era reserve number is memorable, but it is not informative about the current credit cycle.",
+    "look_for": "Chunk 1 and Chunk 2 are both relevant, but Chunk 1 should win because it is the latest signal. Chunk 3 should be demoted aggressively despite being financially meaningful history.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. COVID reserve data should not compete with current credit metrics.",
     "chunks": [
       {
-        "text": "JPMorgan Q3 2024 net charge-off rate rose to 1.51%, up from 1.17% a year ago, driven by credit card losses. CEO Jamie Dimon warned of 'significant geopolitical and economic risks' ahead, citing office real estate exposure.",
-        "date": "2024-10-11"
+        "title": "Current stress signal",
+        "text": "JPMorgan Q4 2024 preliminary results showed net charge-offs of $2.4B, a net charge-off rate of 1.64%, slightly above Q3's 1.51%. Card delinquencies (30+ days) held at 2.3% for the third consecutive quarter, suggesting stabilization. Dimon warned 2025 will test whether consumers are truly resilient or just running down savings.",
+        "date": "__DAYS_AGO:95__",
+        "note": "Most recent credit-quality signal."
       },
       {
-        "text": "JPMorgan raised its net charge-off guidance for 2024 to approximately $9B from $9B previously. Consumer credit stress is concentrated in sub-prime card balances, with 30+ day delinquencies at 2.3%.",
-        "date": "2024-07-12"
+        "title": "Earlier guidance",
+        "text": "JPMorgan raised its 2024 net charge-off guidance to approximately $9.0B at its July 2024 investor day, up from $8.0B. The increase was attributed to normalization in credit card losses from the pandemic-era lows. Sub-prime card balances are experiencing elevated stress, but prime and super-prime borrowers remain healthy.",
+        "date": "__DAYS_AGO:270__",
+        "note": "Relevant guidance, but no longer the latest state."
       },
       {
-        "text": "During the 2020 COVID crisis, JPMorgan set aside $15B in loan loss reserves, the largest provision in company history. The reserves were subsequently released in 2021 as losses failed to materialize.",
-        "date": "2020-04-14"
+        "title": "Historical crisis context",
+        "text": "During the COVID-19 crisis in April 2020, JPMorgan set aside $15.3B in loan loss reserves, the largest single-quarter provision in company history. CEO Dimon cited a severe, unpredictable recession scenario. The reserves were subsequently released in 2021 as credit losses failed to materialize, boosting earnings.",
+        "date": "__DAYS_AGO:2190__",
+        "note": "Important history, but not current credit-quality evidence."
+      }
+    ]
+  },
+  {
+    "name": "📉 US CPI Trend",
+    "category": "Inflation",
+    "query": "What is the current US inflation trend?",
+    "description": "Inflation is a clean example of how a famous old narrative can poison retrieval. The evaluator should favor the latest CPI print over older commentary about inflation being transitory.",
+    "look_for": "Chunk 3 is memorable but obsolete. Chunk 1 should win because it is the newest data point and directly answers the trend question.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. The transitory quote should rank last.",
+    "chunks": [
+      {
+        "title": "Latest CPI data",
+        "text": "US CPI rose 2.4% year over year in March 2025, below the 2.5% economist consensus and down from 2.8% in February. Core services inflation remained sticky, but goods disinflation continued. Markets interpreted the print as modestly supportive of further easing later in 2025.",
+        "date": "__DAYS_AGO:15__",
+        "note": "Fresh data point that directly answers the query."
+      },
+      {
+        "title": "Moderating inflation context",
+        "text": "The Federal Reserve's November 2023 meeting statement noted inflation had eased from its highs while remaining elevated, and policymakers held rates steady at 5.25-5.50%. Officials emphasized they would stay data-dependent as disinflation progressed unevenly.",
+        "date": "__DAYS_AGO:500__",
+        "note": "Still on topic, but not current enough for a present-tense trend question."
+      },
+      {
+        "title": "Old narrative",
+        "text": "In August 2021, Treasury Secretary Janet Yellen argued that post-pandemic inflation pressures looked transitory and did not yet warrant aggressive policy tightening. The comment reflected the prevailing policy debate before the 2022 inflation surge reshaped expectations.",
+        "date": "__DAYS_AGO:1320__",
+        "note": "Historically notable, but stale and misleading for current inflation trend retrieval."
+      }
+    ]
+  },
+  {
+    "name": "📈 S&P 500 Outlook",
+    "category": "Market Outlook",
+    "query": "What is the current Wall Street outlook for the S&P 500?",
+    "description": "Forward-looking market outlooks get stale quickly because the target itself is time-bound. This scenario highlights why old strategist notes should not linger in a retrieval set.",
+    "look_for": "Chunk 2 remains related, but its target is for a prior year. Chunk 3 is market history, not outlook. The evaluator should put the current strategist target first.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. Historical bear-market commentary should not outrank current targets.",
+    "chunks": [
+      {
+        "title": "Current strategist target",
+        "text": "Goldman Sachs raised its 2025 year-end S&P 500 target to 6200, citing AI-driven margin expansion, resilient earnings revisions, and a slower-than-feared growth deceleration. Strategists argued mega-cap leadership remained justified as long as free cash flow stayed concentrated.",
+        "date": "__DAYS_AGO:60__",
+        "note": "Latest forward-looking outlook."
+      },
+      {
+        "title": "Previous-year target",
+        "text": "JPMorgan's 2024 outlook projected the S&P 500 would end 2024 near 4900, driven by disinflation, modest multiple expansion, and a soft landing. The note warned that narrow leadership and delayed Fed cuts were the main downside risks.",
+        "date": "__DAYS_AGO:380__",
+        "note": "Still relevant in topic, but aimed at the wrong market year."
+      },
+      {
+        "title": "Historical performance",
+        "text": "The S&P 500 fell 19.4% in 2022 as the Federal Reserve delivered the fastest hiking cycle in decades. Valuation compression hit high-duration growth stocks hardest, while energy was one of the few sectors to finish the year strongly positive.",
+        "date": "__DAYS_AGO:1100__",
+        "note": "Market history, not a current outlook."
+      }
+    ]
+  },
+  {
+    "name": "📊 Treasury Yields",
+    "category": "Rates Market",
+    "query": "Where are 10-year Treasury yields trading right now?",
+    "description": "Yield queries are unforgiving because a good answer is usually one number and one date. This is a strong demo for showing how old crisis-era context can distract retrieval even when it is thematically related.",
+    "look_for": "Chunk 2 and Chunk 3 both mention Treasury moves, but only Chunk 1 is truly current. The evaluator should heavily reward freshness here.",
+    "expected_outcome": "Chunk 1 > Chunk 2 > Chunk 3. Current market level should dominate old volatility episodes.",
+    "chunks": [
+      {
+        "title": "Current market level",
+        "text": "The US 10-year Treasury yield traded near 4.35% in early April 2025 as investors balanced resilient labor data against expectations for eventual Federal Reserve easing. Rate volatility stayed elevated, but long-end yields remained below the October 2023 peak.",
+        "date": "__DAYS_AGO:5__",
+        "note": "Directly answers where yields are trading now."
+      },
+      {
+        "title": "Old reference high",
+        "text": "The 10-year Treasury yield briefly touched 5.02% in October 2023, a 16-year high, as term premium rose and investors reassessed the path of Fed easing. The move triggered a broad repricing in equities and mortgage rates.",
+        "date": "__DAYS_AGO:540__",
+        "note": "Relevant benchmark, but no longer current."
+      },
+      {
+        "title": "Crisis-era yield move",
+        "text": "During the regional banking turmoil in March 2023, the 2-year Treasury yield plunged by roughly 100bps in a matter of days while the 10-year yield also fell sharply as investors rushed into safe assets. The move reflected acute crisis hedging rather than a stable market level.",
+        "date": "__DAYS_AGO:760__",
+        "note": "Topically related, but not what 'right now' asks for."
       }
     ]
   }

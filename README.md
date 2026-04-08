@@ -43,6 +43,12 @@ User Query + N Context Chunks
 
 🔗 **[pacific-context-eval.streamlit.app](https://pacific-context-eval.streamlit.app)**
 
+### First-Run Path
+
+1. Open the **Fed Rate Policy** walkthrough first. It shows the core failure mode: a stale-but-relevant macro chunk should lose to fresher policy guidance.
+2. Review the result cards to see how **relevance**, **freshness**, **age**, and the final **Use / Review / Replace** recommendation line up.
+3. Change **λ** or the **relevance weight** in the sidebar to see how aggressively the evaluator should demote stale context.
+
 ---
 
 ## Run Locally
@@ -73,7 +79,7 @@ pytest tests/ -v
 tests/test_evaluator.py::TestFreshnessScore::test_today_is_perfect     PASSED
 tests/test_evaluator.py::TestFreshnessScore::test_decay_is_monotonic    PASSED
 ...
-17 passed in 0.04s
+43 passed in 0.96s
 ```
 
 ---
@@ -123,22 +129,36 @@ Scenarios include: Fed rate (2022 vs 2024), Apple EPS, NVIDIA revenue, oil price
 
 ---
 
+## Demo Scenarios
+
+The evaluator tab includes **8 walkthrough scenarios** with relative-date placeholders that resolve at load time, so the examples stay believable as time passes.
+
+- **Recommended first run:** Fed Rate Policy
+- Other walkthroughs: Apple earnings, NVIDIA AI revenue, crude oil outlook, JPMorgan credit, US CPI trend, S&P 500 outlook, Treasury yields
+- Each scenario includes an explanation of what should rank first and what stale pattern the user should notice
+
+This makes the demo usable for a first-time reviewer without requiring them to infer the intended behavior from the README or code.
+
+---
+
 ## Project Structure
 
 ```
 pacific-context-eval/
 ├── app.py                  # Streamlit entry point
 ├── evaluator/
+│   ├── demo_loader.py      # Relative-date demo scenario normalization
 │   ├── freshness.py        # Exponential decay scoring
 │   ├── relevance.py        # GPT-4o relevance judge
 │   └── reranker.py         # Composite scoring + stale detection
 ├── tests/
-│   └── test_evaluator.py   # 17 pytest tests (all passing)
+│   ├── test_demo_loader.py # Demo-data reliability tests
+│   └── test_evaluator.py   # Core evaluator tests
 ├── config.py               # Tunable parameters
 ├── prompts/
 │   └── relevance_judge.txt # GPT-4o system prompt
 ├── demo_data/
-│   └── examples.json       # 5 pre-built financial demo scenarios
+│   └── examples.json       # 8 walkthrough scenarios with explanatory metadata
 ├── ONE_PAGE_LETTER.md      # Submission letter
 ├── requirements.txt
 └── .env.example
